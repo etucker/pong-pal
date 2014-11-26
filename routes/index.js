@@ -4,8 +4,11 @@ var router = express.Router();
 var Datastore = require('nedb')
   , db = new Datastore();
 
+var pg = require('pg.js');
+var pgConnectionString = "postgresql://localhost";
+
 // faux database
-var makeFauxDatabase = function() {
+var makeFauxNedbDatabase = function() {
   var matches = [
     {
       player1: 'etucker',
@@ -28,10 +31,82 @@ var makeFauxDatabase = function() {
     });
   };
 };
-makeFauxDatabase();
+makeFauxNedbDatabase();
+
+
+router.get('/pg-test', function(req, res) {
+  pg.connect(pgConnectionString, function (err, client, done) {
+    var handleError = function (err) {
+      if (!err) return false;
+
+      // Otherwise an error occurred.
+      done(client);
+      // TODO: send back a 500 error.
+      res.status(500).send("Connection problem: " + err);
+      return true;
+    };
+
+    if (handleError(err)) return;
+
+    client.query('select * from matches', function (err, result) {
+      res.send(result.rows);
+    });
+  });
+});
+
+// Seed Postgres database
+// Table must already be created:
+//   create table matches (player1 varchar(50), player2 varchar(50), player1Score int, player2Score int, whenPlayed date)
+router.get('/seed-data', function(req, res) {
+  var randomLoosingScore = function () {
+    Math.floor((Math.random() * 11));
+  };
+
+  var matches = [
+    {
+      player1: 'etucker',
+      player2: 'jcstamm',
+      player1Score: 11,
+      player2Score: randomLoosingScore(),
+      when: new Date(2014, 1, 2)
+    },
+    {
+      player1: 'etucker',
+      player2: 'jcstamm',
+      player1Score: randomLoosingScore(),
+      player2Score: 11,
+      when: new Date(2014, 4, 1)
+    }
+  ];
+
+  pg.connect(pgConnectionString, function (err, client, done) {
+    var handleError = function (err) {
+      if (!err) return false;
+
+      // Otherwise an error occurred.
+      done(client);
+      // TODO: send back a 500 error.
+      res.status(500).send("Connection problem: " + err);
+    };
+
+    if (handleError(err)) return;
+
+    for (var i = 0; i < matches.length; i++) {
+
+      client.query('INSERT INTO matches (player1, player2, player1Score, player2Score, whenPlayed) VALUES ($1, $2, $3, $4, $5)',
+      [ matches[i].player1, matches[i].player2, matches[i].player1Score, matches[i].player2Score, matches[i].when ],
+      function (err, result) {
+        if (handleError(err)) return;
+        console.log("result: " + result);
+        done();
+      });
+    };
+  });
+});
 
 /* GET home page. */
 router.get('/', function(req, res) {
+
   db.find({}, function(err, matches) {
     var matchesDateReversed = matches.sort(function (a, b) {
       if (a.when < b.when)
